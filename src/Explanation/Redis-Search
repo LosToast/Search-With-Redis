@@ -1,0 +1,107 @@
+Explanation to Hash , TRIE , JSON Tags displayed in Redis insight Screen Shot
+
+Imagine Redis OM is building **two different “lookup systems”** for your products:
+
+---
+
+## 1) JSON keys (`products:12`, `products:120` …)
+
+These are your **real product records**.
+
+Think of them like rows in a table:
+
+* key = product id
+* value = full product data (name, category, price…)
+
+So Redis stores each product like a small JSON file.
+
+Example:
+
+```
+products:12  ->  { "name": "Product 12", "category": "books", "price": 77.61, ... }
+```
+
+✅ This is what search returns (`FT.SEARCH`).
+
+---
+
+## 2) TRIE (shown as “TRIETYPE0”) = Autocomplete word list
+
+A **TRIE** is just a **prefix tree** for fast typing suggestions.
+
+Think of your phone keyboard:
+
+* you type “Pro…”
+* it quickly suggests “Product 12”, “Product 120”, …
+
+To do that fast, Redis makes a special structure (TRIE) that stores **only names**, not full products.
+
+So this key:
+
+```
+sugg:RedisProductEntity:name
+```
+
+means:
+
+> “Here is my autocomplete dictionary for product names.”
+
+✅ This is what autocomplete uses.
+
+It doesn’t store category/price — only the suggestion text + score.
+
+---
+
+## 3) HASH = Payload store for autocomplete
+
+A **HASH** in Redis is like a **map/dictionary**:
+
+```
+field -> value
+```
+
+Redis OM uses this to store **extra info for each suggestion**.
+
+Because you said:
+
+* autocomplete from `name`
+* but also return `category` and `price`
+
+So Redis OM stores:
+
+```
+"Product 12" -> {"category":"books", "price":77.61}
+"Product 120" -> {"category":"electronics", "price":901.55}
+...
+```
+
+All inside this HASH key:
+
+```
+sugg:payload:RedisProductEntity:name
+```
+
+✅ When autocomplete runs:
+
+1. TRIE gives suggestion names
+2. HASH gives category + price for each suggestion
+
+---
+
+## Short analogy
+
+Think of a bookstore:
+
+* **JSON docs** = full books on shelves
+* **TRIE** = a small card index with only book titles for quick lookup
+* **HASH** = another card index that says “for this title, its section and price are …”
+
+---
+
+## Super short summary
+
+* **TRIE** = “list of names for suggestions”
+* **HASH** = “extra details for those suggestions”
+* **JSON** = “actual product objects”
+
+Nothing is wrong — Redis OM is just creating these helper structures automatically for autocomplete + search.
