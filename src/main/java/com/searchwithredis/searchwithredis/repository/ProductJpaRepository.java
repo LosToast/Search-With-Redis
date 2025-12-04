@@ -22,4 +22,14 @@ public interface ProductJpaRepository extends JpaRepository<Products ,Long > {
     )
     List<Products> searchByNameNative(@Param("q") String q,
                                       @Param("limit") int limit);
+
+    @Query(value = """
+        SELECT *
+        FROM products
+        WHERE id > :lastId
+        ORDER BY id
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<Products> fetchNextBatch(@Param("lastId") long lastId,
+                                  @Param("limit") int limit);
 }
