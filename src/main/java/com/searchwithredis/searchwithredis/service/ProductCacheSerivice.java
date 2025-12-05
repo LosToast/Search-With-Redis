@@ -4,6 +4,9 @@ import com.searchwithredis.searchwithredis.entity.Products;
 import com.searchwithredis.searchwithredis.entity.RedisProductEntity;
 import com.searchwithredis.searchwithredis.repository.ProductJpaRepository;
 import com.searchwithredis.searchwithredis.repository.ProductRedisRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -13,22 +16,24 @@ public class ProductCacheSerivice {
     private ProductJpaRepository dbRepo;
     private ProductRedisRepository redisRepo;
 
-    public ProductCacheSerivice(ProductJpaRepository productJpaRepository, ProductRedisRepository productRedisRepository) {
+    public ProductCacheSerivice(ProductJpaRepository productJpaRepository,
+                                ProductRedisRepository productRedisRepository) {
         this.dbRepo = productJpaRepository;
         this.redisRepo = productRedisRepository;
     }
 
     // this is a Cache-Aside Pattern
-    public List<RedisProductEntity> search(String q , int limit){
+    public Page<RedisProductEntity> search(String q , Pageable pageable){
         String rsQuery = buildNameContainsQuery(q);
-        List<RedisProductEntity> cached = redisRepo.search(rsQuery);
-        if(!cached.isEmpty())
-            return cached.stream().limit(limit).toList();
+        //List<RedisProductEntity> cached = redisRepo.search(rsQuery);
+        Page<RedisProductEntity> redisPage = redisRepo.search(rsQuery, pageable);
+        if(!redisPage.isEmpty())
+            return redisPage;
 
         //if cache miss
-        List<Products> products = dbRepo.searchByNameNative(q , limit);
+        Page<Products> products = dbRepo.searchByNameNative(q , pageable);
         if(products.isEmpty())
-            return List.of();
+            return new PageImpl<>(List.of(), pageable, 0);
 
         //mapping the products from db to redisProductEntity
         List<RedisProductEntity> docs = products.stream()
@@ -36,7 +41,7 @@ public class ProductCacheSerivice {
                 .toList();
 
         redisRepo.saveAll(docs);
-        return docs;
+        return new PageImpl<>(docs, pageable, products.getTotalElements());
     }
 
     private RedisProductEntity mapToRedis(Products products) {

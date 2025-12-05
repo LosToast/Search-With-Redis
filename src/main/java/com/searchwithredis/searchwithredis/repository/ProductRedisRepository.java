@@ -5,6 +5,8 @@ import com.redis.om.spring.autocomplete.Suggestion;
 import com.redis.om.spring.repository.RedisDocumentRepository;
 import com.redis.om.spring.repository.query.autocomplete.AutoCompleteOptions;
 import com.searchwithredis.searchwithredis.entity.RedisProductEntity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
@@ -15,7 +17,7 @@ public interface ProductRedisRepository extends RedisDocumentRepository<RedisPro
     // Full-text search on name (because name is @Searchable)
 
     @Query("$q")
-    List<RedisProductEntity> search(@Param("q") String q);
+    Page<RedisProductEntity> search(@Param("q") String q , Pageable page);
 
     // Autocomplete on name (because name is @AutoComplete)
     List<Suggestion> autoCompleteName(String query);
