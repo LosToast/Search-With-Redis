@@ -1,0 +1,11 @@
+1. “partial-index correctness problem”
+-> Redis is not your full search index. It only contains products that happened to be written there from previous searches (because you only saveAll() when Redis returns zero results).
+   So Redis ends up being a partial index (incomplete copy of your DB).
+   That creates this bug:
+   DB has 200 products matching "iphone".
+   Redis currently contains only 10 iphone products (because only those were cached earlier).
+   Your code searches Redis first → gets 10 results (non-empty) → returns them immediately.
+   User sees 10 results even though the “correct” answer is 200.
+   That’s “correctness” because the results are wrong/incomplete, not just slow.
+
+   Strategies is mentioned in Strigies file
