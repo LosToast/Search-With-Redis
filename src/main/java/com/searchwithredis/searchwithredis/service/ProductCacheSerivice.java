@@ -31,7 +31,7 @@ public class ProductCacheSerivice {
 
     // this is a Cache-Aside Pattern
     public Page<RedisProductEntity> search(String q , Pageable pageable){
-        String rsQuery = buildNameContainsQuery(q);
+        String rsQuery = buildContainsQueryOnName(q);
         //List<RedisProductEntity> cached = redisRepo.search(rsQuery);
         Page<RedisProductEntity> redisPage = redisRepo.search(rsQuery, pageable);
         if(!redisPage.isEmpty())
@@ -55,7 +55,7 @@ public class ProductCacheSerivice {
         RedisProductEntity redisProduct = new RedisProductEntity();
         redisProduct.setId(String.valueOf(products.getId()));
         redisProduct.setName(products.getName());
-        redisProduct.setCategory(products.getName());
+        redisProduct.setCategory(products.getCategory());
         redisProduct.setPrice(products.getPrice());
         redisProduct.setDescription(products.getDescription());
         redisProduct.setCreatedAt(products.getCreatedAt());
@@ -68,22 +68,6 @@ public class ProductCacheSerivice {
     * */
     private String escapeRediSearchToken(String t) {
         return t.replaceAll("([\\\\\\-\\[\\]\\{\\}\\(\\)\\|\\=\\>\\<\\~\\*\\:\\\"\\@])", "\\\\$1");
-    }
-
-    private String buildNameContainsQuery(String q) {
-        String normalized = q == null ? "" : q.trim().replaceAll("\\s+", " ");
-        if (normalized.isEmpty()) return "*"; // match all (or return empty)
-
-        String[] tokens = normalized.split(" ");
-
-        String tokenPart = java.util.Arrays.stream(tokens)
-                .filter(t -> !t.isBlank())
-                .map(this::escapeRediSearchToken)
-                .map(t -> "*" + t + "*")          // wildcard each token
-                .reduce((a, b) -> a + " " + b)    // AND by default inside ()
-                .orElse("*");
-
-        return "@name:(" + tokenPart + ")";
     }
 
    /* public List<String> autocomplete(String q, int limit, boolean fuzzy) {
@@ -132,7 +116,7 @@ public class ProductCacheSerivice {
         String tokenPart = java.util.Arrays.stream(tokens)
                 .filter(t -> !t.isBlank())
                 .map(this::escapeRediSearchToken)
-                .map(t -> "*" + t + "*")           // <-- contains match
+                .map(t -> t + "*")           // ✅ prefix-only
                 .reduce((a, b) -> a + " " + b)     // AND across tokens
                 .orElse("*");
 
