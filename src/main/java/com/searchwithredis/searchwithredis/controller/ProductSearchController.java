@@ -27,4 +27,11 @@ public class ProductSearchController {
         Pageable pageable = PageRequest.of(page , size);
         return service.search(q,pageable);
     }
+
+    @GetMapping("/autocomplete")
+    public List<String> autocomplete(@RequestParam String q,
+                                     @RequestParam(defaultValue = "10") int limit,
+                                     @RequestParam(defaultValue = "true") boolean fuzzy) {
+        return service.autocompleteHybrid(q, limit , fuzzy);
+    }
 }
