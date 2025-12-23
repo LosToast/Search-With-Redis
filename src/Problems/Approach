@@ -1,0 +1,98 @@
+Implement Option B in your project (minimal version)
+Step 1: Create outbox table/entity
+
+Table: outbox_events
+
+Fields:
+
+id
+eventType (UPSERT / DELETE)
+aggregateId (product id)
+payload (JSON of product, optional)
+processedAt
+createdAt
+
+JPA entity (simple):
+
+*******Code*************
+@Entity
+@Table(name = "outbox_events")
+public class OutboxEvent {
+  @Id @GeneratedValue
+  private Long id;
+
+  private String eventType;    // UPSERT / DELETE
+  private String aggregateId;  // product id
+
+  @Lob
+  private String payload;      // optional JSON
+
+  private LocalDateTime createdAt = LocalDateTime.now();
+  private LocalDateTime processedAt;
+}
+
+Repository
+public interface OutboxRepository extends JpaRepository<OutboxEvent, Long> {
+  List<OutboxEvent> findTop200ByProcessedAtIsNullOrderByIdAsc();
+}
+
+
+Step 2: On DB write, insert outbox event inside the same transaction
+
+In your create/update/delete service:
+@Transactional
+public Products updateProduct(String id, ProductUpdateRequest req) {
+    Products p = productJpaRepository.findById(id)
+        .orElseThrow(() -> new RuntimeException("Not found"));
+
+    // update fields
+    ...
+
+    Products saved = productJpaRepository.save(p);
+
+    // record outbox event in same transaction
+    OutboxEvent e = new OutboxEvent();
+    e.setEventType("UPSERT");
+    e.setAggregateId(saved.getId().toString());
+    e.setPayload(toJson(saved)); // optional
+    outboxRepository.save(e);
+
+    return saved;
+}
+
+Step 3: Background job processes outbox and updates Redis
+Run every 1–2 seconds (or faster):
+@Scheduled(fixedDelay = 1000)
+@Transactional
+public void processOutbox() {
+    List<OutboxEvent> events = outboxRepository
+        .findTop200ByProcessedAtIsNullOrderByIdAsc();
+
+    for (OutboxEvent e : events) {
+        if ("UPSERT".equals(e.getEventType())) {
+            Products p = productJpaRepository.findById(Long.valueOf(e.getAggregateId()))
+                .orElse(null);
+            if (p != null) {
+                productRedisRepository.save(mapToRedis(p));
+            }
+        } else if ("DELETE".equals(e.getEventType())) {
+            productRedisRepository.deleteById(e.getAggregateId());
+        }
+
+        e.setProcessedAt(LocalDateTime.now());
+    }
+}
+Pros:
+reliable
+retries naturally (if job fails mid-way, events remain unprocessed)
+decouples indexing from API latency
+very close to real production pipelines (Kafka/Debezium style)
+
+❌ Cons:
+search is eventually consistent (usually 1–2 seconds behind)
+
+Option C (more infra, also real): Redis Streams / Kafka consumer
+Same as Outbox, but instead of scheduled job you:
+publisher reads outbox and pushes to Redis Streams/Kafka
+consumer group updates Redis index
+This scales better, but Option B is already “production correct”.

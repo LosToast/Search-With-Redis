@@ -9,3 +9,32 @@
    That’s “correctness” because the results are wrong/incomplete, not just slow.
 
    Strategies is mentioned in Strigies file
+
+2. When we Search in redis with "Product 1" it always it db query and when searched "Product One" it wont hit db query
+    it will fetch from redis
+
+    sol: - In RediSearch (Redis Stack search), field:(term*) is a prefix query. By default, RediSearch requires the
+            prefix to be at least 2 characters long (MINPREFIX default is 2).
+            one* ✅ length 3 → valid prefix search → works
+            1* ❌ length 1 → too short for prefix search → it won’t expand, so it often won’t match what you expect
+            So the issue is not “numeric vs text” by itself—it's that your numeric prefix is only one character.
+
+    How to make search consistent (numeric or text)
+    sol -> if you really need 1* : set MINPREFIX to 1
+            FT.CONFIG SET MINPREFIX 1
+
+            Option B (recommended): don’t use prefix for single-character numbers
+            If the user typed 1, just search it as an exact token, not a prefix:
+            Instead of: @name:(Product* 1*)
+            Use: @name:(Product* 1)
+            If you still want prefix for longer inputs:
+            If input length == 1 → exact
+            If input length >= 2 → prefix
+
+            Example:
+            user: "Product 1" → @name:(Product* 1)
+            user: "Product 12" → @name:(Product* 12*)
+            user: "Product one" → @name:(Product* one*)
+            This gives consistent behavior
+
+            This is a very common approach in autocomplete/search boxes.

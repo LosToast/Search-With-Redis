@@ -51,7 +51,7 @@ public class ProductCacheSerivice {
         return new PageImpl<>(docs, pageable, products.getTotalElements());
     }
 
-    private RedisProductEntity mapToRedis(Products products) {
+    public RedisProductEntity mapToRedis(Products products) {
         RedisProductEntity redisProduct = new RedisProductEntity();
         redisProduct.setId(String.valueOf(products.getId()));
         redisProduct.setName(products.getName());
