@@ -1,3 +1,33 @@
+Option B (recommended, production-like): Transactional Outbox + async indexer
+
+This is the standard way to avoid “DB committed but Redis update failed”.
+Why it’s the correct fix
+If you “dual write” (DB + Redis in same request), you can get failures like:
+DB commit succeeds ✅
+Redis update fails ❌
+→ now index is stale
+
+Transactional Outbox guarantees:
+If DB commit happens, an “event row” is saved too (same transaction)
+A background worker reliably delivers those events to Redis (with retries)
+Redis will eventually match DB even with transient errors
+
+Goal
+Whenever a product is created/updated/deleted in Postgres:
+you write an outbox row in the same DB transaction
+a background job reads outbox rows and updates Redis (upsert/delete)
+if Redis is down, events remain unprocessed and will retry later
+
+**************************Simple Terms*****************************
+To Sync Redis with Db Data as Db is source of truth
+So whenever client created/update/delete the data it writes into the db
+we want the latest data in redis so to do this sync
+we created the outbox table where chnages like create/update/delete will be capture in single transaction
+so a new row will be inserted in outbox table , schedular or background worker will read the unprocess data from outbox table
+and it will write to redis and marked it proced in outbox table
+in this way we can handle dual writes and gurantee db data will be sync with redis
+
+
 Implement Option B in your project (minimal version)
 Step 1: Create outbox table/entity
 

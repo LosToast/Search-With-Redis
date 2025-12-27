@@ -1,0 +1,121 @@
+Statement : - Currently we are using Scheduler to read and write to db and syncing data to redis; so now we want scalable
+            solution
+
+          Ans:- Kafka is exactly the scaling step production teams take.
+                The key design is:
+                ✅ Transactional Outbox stays (it’s how you avoid dual-write bugs)
+                ✅ Replace “scheduler that updates Redis” with:
+
+                Outbox Publisher → Kafka topic
+                Kafka Consumer (indexer) → updates Redis index
+
+
+                Target architecture
+                Write path (fast)
+                API → DB transaction commits (products + outbox row) → return
+
+                Async indexing path (scales)
+                Outbox Publisher → Kafka topic → Indexer Consumer → Redis OM save/delete
+
+                You can’t have “a new DB row automatically triggers Kafka” just by itself.
+                A database insert doesn’t magically emit an event. In production you choose one of
+                two standard ways to turn DB changes into Kafka events:
+
+                1. Application emits the event (often via Transactional Outbox)
+
+                2. CDC (Change Data Capture) reads the DB log (Debezium) and emits events
+
+                Here’s the clean flow + mental model for your current project using Kafka (single Spring Boot app, but
+                production-style pipeline). No microservices needed to understand it.
+
+                Mental model: three “lanes”
+                Think of your system as 3 separate lanes that interact:
+
+                1) Write lane (DB is truth)
+                Handles create/update/delete
+                Must be fast and correct
+                Never depends on Redis availability
+                ✅ Output of this lane: DB rows + an outbox event
+
+                2) Event lane (Kafka is the conveyor belt)
+                Takes “things that happened” and delivers them reliably
+                You can scale consumers later
+                Decouples write load from indexing load
+                ✅ Output of this lane: events in Kafka topic
+
+                3) Index lane (Redis search index)
+                Consumes events
+                Updates Redis OM documents
+                Search/autocomplete read only from Redis
+                ✅ Output of this lane: Redis search stays up-to-date
+
+                The actual flow in your project (end-to-end)
+                A) Create/Update Product
+                Step-by-step
+
+                Client calls:
+                POST /products or PUT /products/{id}
+
+                Your service runs a single DB transaction:
+
+                save product in products
+
+                insert outbox row in outbox_events with eventType=UPSERT, aggregateId=productId
+
+                Transaction commits ✅
+                At this point:
+
+                DB is correct
+
+                outbox has a “to be published” event
+
+                Outbox Publisher publishes to Kafka:
+
+                reads unprocessed outbox rows
+
+                produces Kafka message to topic product-index-events (key = productId)
+
+                marks outbox row as processedAt = now
+
+                Kafka Consumer (Indexer) receives the message:
+
+                if UPSERT: load product from DB (or use payload if included)
+
+                map to RedisProductEntity
+
+                redisRepo.save(redisEntity) (upsert)
+
+                Now /search and /autocomplete return the updated product from Redis.
+
+                What user experiences
+
+                Writes succeed instantly (DB commit)
+
+                Search updates appear “almost real-time” (usually milliseconds–seconds)
+
+                This is eventual consistency (small lag is normal)
+
+                B) Delete Product
+
+                Same model:
+
+                DELETE /products/{id}
+
+                DB deletes row + outbox event DELETE
+
+                publisher sends Kafka event
+
+                consumer does redisRepo.deleteById(id)
+
+                Key mental model: “Redis is a projection”
+
+                Redis Search is not the source of truth.
+                It’s a read-optimized projection built from events.
+
+                DB = truth
+
+                Kafka = log of changes
+
+                Redis = derived/indexed view for fast search
+
+                This is exactly how real production search indexing works.

@@ -1,0 +1,41 @@
+“Dual-write bugs” are what happen when your app tries to update two systems in one request
+(usually DB + Kafka/Redis) and you can’t make those writes truly atomic together.
+
+What “dual write bug” means
+
+Imagine your create/update endpoint does this:
+INSERT/UPDATE product in Postgres ✅
+publish event to Kafka ✅/❌
+(optional) write doc to Redis ✅/❌
+
+Those are two writes to two different systems. There are failure windows:
+Case A: DB succeeds, Kafka fails
+Product exists in DB
+No Kafka event
+Index never updates → search/autocomplete stale forever unless rebuilt
+
+Case B: Kafka succeeds, DB fails/rolls back
+Consumers see event and index “phantom” product
+DB doesn’t have it → search shows data that doesn’t exist
+
+Case C: DB succeeds, Kafka succeeds, but response fails and client retries
+You may publish duplicate events unless you’re idempotent
+These inconsistencies are the “dual-write bugs”.
+
+Why Transactional Outbox avoids dual-write bugs
+
+Transactional Outbox means:
+✅ In one DB transaction, you write:
+the product row
+an outbox row describing what happened
+If the transaction commits, both exist.
+If it rolls back, neither exists.
+
+Then later, a publisher reads outbox rows and sends to Kafka.
+So you never have “DB committed but no record of the event” — the outbox row is that record.
+
+It doesn’t make DB+Kafka atomic, but it guarantees:
+“If DB committed, an event is guaranteed to be publishable”
+
+retries can keep trying until Kafka gets it
+That’s why it’s the standard fix.
