@@ -1,0 +1,54 @@
+## 13. CQRS vs “CQRS-inspired separation” in THIS project
+
+### What full CQRS usually means
+In strict CQRS, you typically have:
+- **Commands** (write requests) handled by command handlers
+- **Queries** (read requests) handled by query handlers
+- Often **separate read models** and sometimes separate databases
+- Optional messaging/event bus between write and read sides
+
+### What you implemented here
+You implemented the **core idea** of CQRS (separating read concerns from write concerns), but not the full formal pattern.
+
+**Write side (Command-ish):**
+- `ProductWriteService` writes to the DB and records changes in `OutboxEvent`.
+
+**Read side (Query-ish):**
+- `ProductCacheSerivice` serves search/autocomplete from Redis.
+- The DB is only used on a cache miss or to rebuild Redis.
+
+**Projection / sync:**
+- `OutboxIndexerJob` is the “bridge” that turns DB changes into a Redis projection.
+
+So: you didn’t build command/query buses or separate controllers, but you DID create a **separate read model in Redis** (RedisProductEntity) and a **separate write model in DB** (Products) with an async sync mechanism. That’s why I called it CQRS-*style*.
+
+If you want “more CQRS”, the next steps would be:
+- Separate controllers: `ProductCommandController` and `ProductQueryController`
+- Separate DTOs/models for reads vs writes
+- Use an event bus (Redis Streams/Kafka) instead of polling
+
+---
+
+
+
+About the CQRS thing (in simple terms)
+
+You’re right: you didn’t implement “full CQRS” formally.
+
+What you did implement is the CQRS idea (sometimes called CQRS-inspired separation):
+
+Write side: ProductWriteService writes to the DB + writes an OutboxEvent
+
+Read side: ProductCacheSerivice serves search/autocomplete from Redis
+
+Sync/Projection: OutboxIndexerJob updates Redis based on Outbox events
+
+So it’s not “CQRS framework-style” (no command/query handlers or buses), but it is separating reads from writes using different models + storage:
+
+DB model: Products (source of truth)
+
+Redis model: RedisProductEntity (read/search projection)
+
+That’s exactly why the doc now says CQRS-inspired instead of claiming full CQRS.
+
+If you want, paste your updated doc into a README and I can format it as a clean README.md with sections + diagrams nicely aligned.
